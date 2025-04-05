@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { 
+  Bell,
   CookingPot, 
   DollarSignIcon, 
   ListOrderedIcon, 
@@ -20,12 +21,98 @@ import {
   OrderItem,
   subscribeToOrders,
   updateOrderStatus,
-  updatePaymentStatus
+  updatePaymentStatus,
+  WaiterCall,
+  subscribeToWaiterCalls,
+  updateWaiterCallStatus
 } from "@/lib/supabase"
 import { ColumnDef } from "@tanstack/react-table"
 import { DataTable } from "@/components/ui/data-table"
 import { format } from "date-fns"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+// Define columns for waiter calls DataTable
+const waiterCallColumns: ColumnDef<WaiterCall>[] = [
+  {
+    accessorKey: "id",
+    header: "Call ID",
+    cell: ({ row }) => {
+      const id = row.getValue("id") as string
+      return <span className="font-mono text-xs">{id.substring(0, 8)}...</span>
+    }
+  },
+  {
+    accessorKey: "table_id",
+    header: "Table",
+    cell: ({ row }) => {
+      return (
+        <div className="flex items-center">
+          <TableIcon className="mr-2 h-4 w-4" />
+          <span className="font-semibold">{row.getValue("table_id")}</span>
+        </div>
+      )
+    }
+  },
+  {
+    accessorKey: "created_at",
+    header: "Requested At",
+    cell: ({ row }) => {
+      const timestamp = row.getValue("created_at") as string
+      return <span>{format(new Date(timestamp), "MMM d, h:mm a")}</span>
+    }
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string
+      const call = row.original as WaiterCall
+      
+      return (
+        <Badge 
+          key={`status-${call.id}-${call._timestamp || ''}`}
+          variant={status === "pending" ? "destructive" : "default"}
+        >
+          {status === "pending" ? "Pending" : "Completed"}
+        </Badge>
+      )
+    }
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    cell: function WaiterCallCell({ row }) {
+      const call = row.original;
+      const [isLoading, setIsLoading] = useState(false);
+      
+      return (
+        <div className="flex space-x-2">
+          {call.status === "pending" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading}
+              onClick={async () => {
+                try {
+                  setIsLoading(true);
+                  await updateWaiterCallStatus(call.id, "completed");
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+            >
+              {isLoading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              ) : (
+                "Mark Complete"
+              )}
+            </Button>
+          )}
+        </div>
+      );
+    }
+  }
+];
 
 // Define columns for the orders DataTable
 const orderColumns: ColumnDef<Order>[] = [
@@ -232,19 +319,24 @@ const orderColumns: ColumnDef<Order>[] = [
 
 export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([])
+  const [waiterCalls, setWaiterCalls] = useState<WaiterCall[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isWaiterCallsLoading, setIsWaiterCallsLoading] = useState(true)
   const [todaysSales, setTodaysSales] = useState(0)
   const [activeTablesCount, setActiveTablesCount] = useState(0)
   const [activeOrders, setActiveOrders] = useState(0)
+  const [pendingWaiterCalls, setPendingWaiterCalls] = useState(0)
   const [paymentFilter, setPaymentFilter] = useState<Order['payment_status'] | 'all'>('all')
   const [refreshKey, setRefreshKey] = useState(0)
   
   // Keep track of last processed orders to detect new ones
   const processedOrdersRef = useRef<Set<string>>(new Set());
+  const processedWaiterCallsRef = useRef<Set<string>>(new Set());
 
   // Function to handle manual refresh
   const handleRefresh = () => {
     setIsLoading(true);
+    setIsWaiterCallsLoading(true);
     // Force a complete refresh by incrementing the key
     setRefreshKey(prev => prev + 1);
   };
@@ -268,6 +360,65 @@ export default function AdminDashboard() {
       delete (window as any).__UPDATE_ORDERS_FN__;
     };
   }, [orders]);
+
+  // Subscribe to waiter calls with real-time updates
+  useEffect(() => {
+    console.log("Setting up waiter calls subscription");
+    let initialLoad = true;
+    
+    const unsubscribe = subscribeToWaiterCalls((latestCalls) => {
+      // Add a timestamp to each call to force re-rendering
+      const callsWithTimestamp = latestCalls.map(call => ({
+        ...call,
+        _timestamp: Date.now()
+      }));
+      
+      // Check for new calls
+      if (!initialLoad) {
+        latestCalls.forEach(call => {
+          if (!processedWaiterCallsRef.current.has(call.id) && call.status === 'pending') {
+            // This is a new call - show a toast notification
+            toast.error(`Table ${call.table_id} needs assistance!`, {
+              description: `Waiter call received at ${format(new Date(call.created_at), "h:mm a")}`,
+              duration: 10000,
+              action: {
+                label: "View",
+                onClick: () => {
+                  // Scroll to the waiter calls section
+                  const waiterCallsSection = document.getElementById('waiter-calls-section');
+                  if (waiterCallsSection) {
+                    waiterCallsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }
+              }
+            });
+            
+            // Mark as processed
+            processedWaiterCallsRef.current.add(call.id);
+          }
+        });
+      } else {
+        // Mark all existing calls as processed on first load
+        latestCalls.forEach(call => {
+          processedWaiterCallsRef.current.add(call.id);
+        });
+        initialLoad = false;
+      }
+      
+      // Update state
+      setWaiterCalls(callsWithTimestamp);
+      setIsWaiterCallsLoading(false);
+      
+      // Calculate pending waiter calls
+      const pending = latestCalls.filter(call => call.status === 'pending').length;
+      setPendingWaiterCalls(pending);
+    });
+
+    return () => {
+      console.log("Cleaning up waiter calls subscription");
+      unsubscribe();
+    };
+  }, [refreshKey]);
 
   // Subscribe to orders with real-time updates
   useEffect(() => {
@@ -472,19 +623,57 @@ export default function AdminDashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={pendingWaiterCalls > 0 ? "border-destructive" : ""}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Staff on Duty</CardTitle>
-            <UserIcon className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Waiter Calls</CardTitle>
+            <Bell className={`h-4 w-4 ${pendingWaiterCalls > 0 ? "text-destructive animate-pulse" : "text-muted-foreground"}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4</div>
+            <div className={`text-2xl font-bold ${pendingWaiterCalls > 0 ? "text-destructive" : ""}`}>
+              {pendingWaiterCalls}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Servers and kitchen staff
+              Tables waiting for assistance
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Waiter Calls Section */}
+      {pendingWaiterCalls > 0 && (
+        <Card id="waiter-calls-section" className="col-span-4 border-destructive">
+          <CardHeader className="flex flex-col md:flex-row justify-between md:items-center space-y-2 md:space-y-0 pb-4">
+            <div className="flex items-center">
+              <CardTitle>
+                <span className="flex items-center">
+                  <Bell className="h-5 w-5 text-destructive mr-2 animate-pulse" />
+                  Waiter Calls
+                </span>
+              </CardTitle>
+              <Badge variant="destructive" className="ml-2">
+                {pendingWaiterCalls} Pending
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isWaiterCallsLoading ? (
+              <div className="flex justify-center items-center h-32">
+                <div className="text-center">
+                  <div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-sm text-muted-foreground">Loading waiter calls...</p>
+                </div>
+              </div>
+            ) : (
+              <DataTable
+                columns={waiterCallColumns}
+                data={waiterCalls.filter(call => call.status === 'pending')}
+                searchKey="table_id"
+                searchPlaceholder="Search by table..."
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Orders Table with Filters */}
       <Card className="col-span-4">
@@ -530,6 +719,27 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Completed Waiter Calls Section (collapsed by default) */}
+      {waiterCalls.filter(call => call.status === 'completed').length > 0 && (
+        <details className="mt-4">
+          <summary className="cursor-pointer font-medium text-sm text-muted-foreground">
+            View Completed Waiter Calls ({waiterCalls.filter(call => call.status === 'completed').length})
+          </summary>
+          <div className="mt-2">
+            <Card>
+              <CardContent className="pt-6">
+                <DataTable
+                  columns={waiterCallColumns}
+                  data={waiterCalls.filter(call => call.status === 'completed')}
+                  searchKey="table_id"
+                  searchPlaceholder="Search by table..."
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </details>
+      )}
     </div>
   )
 } 

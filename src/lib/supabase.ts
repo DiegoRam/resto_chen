@@ -19,6 +19,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+// Waiter call interfaces and functions
+export interface WaiterCall {
+  id: string;
+  table_id: string;
+  status: 'pending' | 'completed';
+  created_at: string;
+  _timestamp?: number; // Optional timestamp for forcing re-renders
+}
+
 // Call waiter function
 export async function callWaiter(tableId: string) {
   const { data, error } = await supabase
@@ -34,6 +43,93 @@ export async function callWaiter(tableId: string) {
   }
   
   return data;
+}
+
+// Get all waiter calls
+export async function getWaiterCalls(filters?: { status?: WaiterCall['status'] }) {
+  let query = supabase
+    .from('waiter_calls')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  // Apply filters if provided
+  if (filters?.status) {
+    query = query.eq('status', filters.status);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error('Error fetching waiter calls:', error);
+    throw error;
+  }
+  
+  return data as WaiterCall[];
+}
+
+// Update waiter call status
+export async function updateWaiterCallStatus(callId: string, status: WaiterCall['status']) {
+  const { data, error } = await supabase
+    .from('waiter_calls')
+    .update({ status })
+    .eq('id', callId)
+    .select();
+  
+  if (error) {
+    console.error('Error updating waiter call status:', error);
+    throw error;
+  }
+  
+  return data as WaiterCall[];
+}
+
+// Subscribe to waiter calls
+export function subscribeToWaiterCalls(callback: (calls: WaiterCall[]) => void, filters?: { status?: WaiterCall['status'] }) {
+  // Initial fetch with filters
+  getWaiterCalls(filters).then(callback);
+  
+  // Set up polling
+  const pollingInterval = setInterval(() => {
+    getWaiterCalls(filters).then(callback);
+  }, 2000); // Poll every 2 seconds
+  
+  // Store the interval ID
+  const intervalId = pollingInterval;
+  
+  // Set up real-time subscription
+  let subscription: RealtimeChannel | null = null;
+  try {
+    const channelName = `waiter-calls-channel-${Math.random().toString(36).substring(2, 11)}`;
+    
+    subscription = supabase
+      .channel(channelName)
+      .on('postgres_changes', { 
+        event: '*',
+        schema: 'public', 
+        table: 'waiter_calls' 
+      }, (payload) => {
+        console.log('Real-time waiter call event received:', payload);
+        getWaiterCalls(filters).then(callback);
+      })
+      .subscribe();
+  } catch (error) {
+    console.error('Error setting up waiter calls subscription:', error);
+  }
+  
+  // Return unsubscribe function
+  return () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
+    
+    try {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    } catch (error) {
+      console.log('Error unsubscribing from waiter calls:', error);
+    }
+  };
 }
 
 // Product-related functions
