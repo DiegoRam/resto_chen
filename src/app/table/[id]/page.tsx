@@ -1,22 +1,35 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { toast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import { callWaiter } from "@/lib/supabase"
-import { Bell, UtensilsCrossed, ShieldCheck } from "lucide-react"
+import { Bell, UtensilsCrossed, ShieldCheck, AlertCircle, CheckCircle } from "lucide-react"
 
 export default function TablePage() {
-  // Use the useParams hook to get params instead
   const params = useParams()
+  const searchParams = useSearchParams()
   const id = params.id as string
+  const ordered = searchParams.get('ordered') === 'true'
   
   const [isLoading, setIsLoading] = useState(false)
   const [isVerified, setIsVerified] = useState(false)
   const [isVerifying, setIsVerifying] = useState(true)
+  
+  // Show ordered toast if redirected after successful order
+  useEffect(() => {
+    if (ordered) {
+      toast.success("Order placed successfully!", {
+        description: "Your order has been sent to the kitchen and will be prepared shortly.",
+        position: "top-center",
+        duration: 5000,
+        icon: <CheckCircle className="h-5 w-5" />
+      })
+    }
+  }, [ordered])
   
   // Verify the table access when the component mounts
   useEffect(() => {
@@ -44,10 +57,11 @@ export default function TablePage() {
         }
       } catch (error) {
         console.error("Error verifying table:", error)
-        toast({
-          title: "Access Denied",
+        toast.error("Access Denied", {
           description: "This table QR code is invalid. Please contact staff.",
-          variant: "destructive",
+          position: "top-center",
+          duration: 5000,
+          icon: <AlertCircle className="h-5 w-5" />
         })
       } finally {
         setIsVerifying(false)
@@ -71,17 +85,19 @@ export default function TablePage() {
     try {
       setIsLoading(true)
       await callWaiter(id)
-      toast({
-        title: "Waiter Called",
+      toast.success("Waiter Called", {
         description: "A waiter will be with you shortly.",
-        variant: "default",
+        position: "top-center",
+        duration: 5000,
+        icon: <CheckCircle className="h-5 w-5" />
       })
     } catch (error) {
       console.error("Error calling waiter:", error)
-      toast({
-        title: "Error",
-        description: "Could not call waiter. Please try again.",
-        variant: "destructive",
+      toast.error("Could not call waiter", {
+        description: "Please try again or ask for assistance.",
+        position: "top-center",
+        duration: 5000,
+        icon: <AlertCircle className="h-5 w-5" />
       })
     } finally {
       setIsLoading(false)

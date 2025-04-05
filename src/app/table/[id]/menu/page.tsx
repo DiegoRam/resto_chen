@@ -1,19 +1,19 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { QuantitySelector } from "@/components/ui/quantity-selector"
-import { toast } from "@/hooks/use-toast"
-import { ArrowLeft, ShoppingCart, Utensils } from "lucide-react"
+import { toast } from "sonner"
+import { ArrowLeft, ShoppingCart, Utensils, Check, AlertCircle } from "lucide-react"
 import { Product, getProducts, createOrder } from "@/lib/supabase"
 
 export default function MenuPage() {
-  // Use the useParams hook to get params instead
+  const router = useRouter()
   const params = useParams()
   const tableId = params.id as string
   
@@ -22,6 +22,7 @@ export default function MenuPage() {
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: number }>({})
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({})
+  const [orderSuccessful, setOrderSuccessful] = useState(false)
 
   // Fetch products on mount
   useEffect(() => {
@@ -31,10 +32,11 @@ export default function MenuPage() {
         setProducts(data)
       } catch (error) {
         console.error("Error loading products:", error)
-        toast({
-          title: "Error",
-          description: "Could not load menu items. Please try again.",
-          variant: "destructive",
+        toast.error("Could not load menu items", {
+          description: "Please try again or ask for assistance.",
+          position: "top-center",
+          duration: 5000,
+          icon: <AlertCircle className="h-5 w-5" />,
         })
       } finally {
         setIsLoading(false)
@@ -43,6 +45,18 @@ export default function MenuPage() {
 
     loadProducts()
   }, [])
+
+  // Reset UI after successful order
+  useEffect(() => {
+    if (orderSuccessful) {
+      // Short delay before redirecting to improve UX
+      const redirectTimer = setTimeout(() => {
+        router.push(`/table/${tableId}?ordered=true`)
+      }, 2500)
+      
+      return () => clearTimeout(redirectTimer)
+    }
+  }, [orderSuccessful, tableId, router])
 
   // Calculate categories and organize products by category
   const { categories, productsByCategory } = useMemo(() => {
@@ -84,16 +98,34 @@ export default function MenuPage() {
     }))
   }
 
+  // Calculate total
+  const calculateTotal = () => {
+    return Object.entries(selectedItems).reduce((total, [productId, quantity]) => {
+      const product = products.find(p => p.id === productId)
+      return total + (product ? product.price * quantity : 0)
+    }, 0)
+  }
+
   // Place order
   const handlePlaceOrder = async () => {
     if (Object.keys(selectedItems).length === 0) {
-      toast({
-        title: "No items selected",
+      toast.error("No items selected", {
         description: "Please select at least one item to place an order.",
-        variant: "destructive",
+        position: "top-center",
+        duration: 5000,
+        icon: <AlertCircle className="h-5 w-5" />
       })
       return
     }
+
+    const totalItems = Object.values(selectedItems).reduce((a, b) => a + b, 0)
+    const totalPrice = calculateTotal()
+    
+    // Show a confirmation toast with loading state
+    toast.loading(`Placing order for Table ${tableId}...`, {
+      position: "top-center",
+      duration: 10000 // Long duration as placeholder until success/error
+    })
 
     try {
       setIsPlacingOrder(true)
@@ -111,19 +143,32 @@ export default function MenuPage() {
 
       await createOrder(tableId, orderItems)
       
-      // Reset selected items
+      // Reset selected items and mark order as successful
       setSelectedItems({})
+      setOrderSuccessful(true)
       
-      toast({
-        title: "Order placed successfully",
-        description: "Your order has been sent to the kitchen.",
+      // Dismiss loading and show success
+      toast.dismiss()
+      toast.success("Order placed successfully!", {
+        description: `Your order has been sent to the kitchen. ${totalItems} items, ${formatPrice(totalPrice)}`,
+        position: "top-center",
+        duration: 5000,
+        icon: <Check className="h-5 w-5" />,
+        action: {
+          label: "View Table",
+          onClick: () => router.push(`/table/${tableId}?ordered=true`)
+        }
       })
     } catch (error) {
       console.error("Error placing order:", error)
-      toast({
-        title: "Error",
-        description: "Could not place your order. Please try again.",
-        variant: "destructive",
+      
+      // Dismiss loading and show error
+      toast.dismiss()
+      toast.error("Could not place your order", {
+        description: "Please try again or ask for assistance.",
+        position: "top-center",
+        duration: 5000,
+        icon: <AlertCircle className="h-5 w-5" />
       })
     } finally {
       setIsPlacingOrder(false)
@@ -136,6 +181,26 @@ export default function MenuPage() {
       style: 'currency',
       currency: 'USD',
     }).format(price)
+  }
+
+  // If we've just placed a successful order, show a success message
+  if (orderSuccessful) {
+    return (
+      <div className="container flex flex-col items-center justify-center min-h-[80vh] px-4 py-8">
+        <div className="animate-bounce mb-6 bg-green-100 dark:bg-green-900 p-4 rounded-full">
+          <Check className="h-16 w-16 text-green-600 dark:text-green-400" />
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-center mb-4">Order Placed Successfully!</h1>
+        <p className="text-center text-muted-foreground mb-8">
+          Your order has been sent to the kitchen and will be prepared shortly.
+        </p>
+        <Button asChild size="lg" className="px-8">
+          <Link href={`/table/${tableId}`}>
+            Return to Table
+          </Link>
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -228,12 +293,7 @@ export default function MenuPage() {
               : "No items selected"}
           </p>
           <p className="text-lg font-bold">
-            {formatPrice(
-              Object.entries(selectedItems).reduce((total, [productId, quantity]) => {
-                const product = products.find(p => p.id === productId)
-                return total + (product ? product.price * quantity : 0)
-              }, 0)
-            )}
+            {formatPrice(calculateTotal())}
           </p>
         </div>
         <Button 

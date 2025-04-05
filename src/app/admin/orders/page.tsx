@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
-import { CheckCircle, Clock, CookingPot, XCircle } from "lucide-react"
+import { CheckCircle, Clock, CookingPot, XCircle, AlertCircle } from "lucide-react"
+import { toast } from "sonner"
 
 import { DataTable } from "@/components/ui/data-table"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [updatingOrders, setUpdatingOrders] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     // Subscribe to orders from Supabase with real-time updates
@@ -30,10 +32,36 @@ export default function OrdersPage() {
 
   const handleStatusChange = async (orderId: string, newStatus: Order["status"]) => {
     try {
+      // Set updating state for this order
+      setUpdatingOrders(prev => ({ ...prev, [orderId]: true }))
+      
+      // Show loading toast
+      toast.loading(`Updating order status...`, {
+        id: `order-update-${orderId}`,
+        position: "top-center"
+      })
+      
       await updateOrderStatus(orderId, newStatus)
-      // No need to update state manually as the real-time subscription will handle it
+      
+      // Show success toast
+      toast.success(`Order status updated to ${newStatus}`, {
+        id: `order-update-${orderId}`,
+        icon: <CheckCircle className="h-5 w-5" />,
+        position: "top-center"
+      })
     } catch (error) {
       console.error("Error updating order status:", error)
+      
+      // Show error toast
+      toast.error(`Failed to update order status`, {
+        id: `order-update-${orderId}`,
+        icon: <AlertCircle className="h-5 w-5" />,
+        description: "Please try again or check your connection.",
+        position: "top-center"
+      })
+    } finally {
+      // Clear updating state
+      setUpdatingOrders(prev => ({ ...prev, [orderId]: false }))
     }
   }
 
@@ -119,6 +147,7 @@ export default function OrdersPage() {
       cell: ({ row }) => {
         const order = row.original
         const currentStatus = order.status
+        const isUpdating = updatingOrders[order.id] || false
         
         return (
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
@@ -128,8 +157,13 @@ export default function OrdersPage() {
                 size="sm" 
                 onClick={() => handleStatusChange(order.id, "preparing")}
                 className="text-xs py-1 h-7 md:text-sm md:h-8 md:py-1 w-full sm:w-auto"
+                disabled={isUpdating}
               >
-                <CookingPot className="mr-1 h-3 w-3 md:h-4 md:w-4" />
+                {isUpdating ? (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent mr-1" />
+                ) : (
+                  <CookingPot className="mr-1 h-3 w-3 md:h-4 md:w-4" />
+                )}
                 <span className="sm:hidden md:inline">Prepare</span>
                 <span className="hidden sm:inline md:hidden">Prep</span>
               </Button>
@@ -141,8 +175,13 @@ export default function OrdersPage() {
                 size="sm" 
                 onClick={() => handleStatusChange(order.id, "completed")}
                 className="text-xs py-1 h-7 md:text-sm md:h-8 md:py-1 w-full sm:w-auto"
+                disabled={isUpdating}
               >
-                <CheckCircle className="mr-1 h-3 w-3 md:h-4 md:w-4" />
+                {isUpdating ? (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent mr-1" />
+                ) : (
+                  <CheckCircle className="mr-1 h-3 w-3 md:h-4 md:w-4" />
+                )}
                 <span>Complete</span>
               </Button>
             )}
@@ -153,8 +192,13 @@ export default function OrdersPage() {
                 size="sm"
                 className="text-destructive hover:text-destructive text-xs py-1 h-7 md:text-sm md:h-8 md:py-1 w-full sm:w-auto"
                 onClick={() => handleStatusChange(order.id, "cancelled")}
+                disabled={isUpdating}
               >
-                <XCircle className="mr-1 h-3 w-3 md:h-4 md:w-4" />
+                {isUpdating ? (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-destructive border-t-transparent mr-1" />
+                ) : (
+                  <XCircle className="mr-1 h-3 w-3 md:h-4 md:w-4" />
+                )}
                 <span>Cancel</span>
               </Button>
             )}

@@ -31,6 +31,11 @@ import { DataTable } from "@/components/ui/data-table"
 import { format } from "date-fns"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+// Define the notification types
+type OrderNotification = 
+  | { type: 'newOrder'; order: Order; formattedTotal: string; itemCount: number }
+  | { type: 'statusChange'; order: Order; previousStatus: string; newStatus: string };
+
 // Define columns for waiter calls DataTable
 const waiterCallColumns: ColumnDef<WaiterCall>[] = [
   {
@@ -229,6 +234,9 @@ const orderColumns: ColumnDef<Order>[] = [
                                 order.status === "preparing" ? "completed" :
                                 order.status === "completed" ? "pending" : "pending";
                 
+                // Send the update to the server first
+                await updateOrderStatus(order.id, newStatus as Order['status']);
+                
                 // Clone the current orders array
                 const currentOrders = [...(window as { __CURRENT_ORDERS__?: Order[] }).__CURRENT_ORDERS__ || []];
                 
@@ -239,16 +247,6 @@ const orderColumns: ColumnDef<Order>[] = [
                 
                 // Update state through the parent component
                 ((window as { __UPDATE_ORDERS_FN__?: (orders: Order[]) => void }).__UPDATE_ORDERS_FN__)?.(updatedOrders);
-                
-                // Then send the update to the server
-                await updateOrderStatus(order.id, newStatus as Order['status']);
-                
-                // After server update, trigger a refresh in case real-time updates aren't working
-                setTimeout(() => {
-                  if (window && (window as { __FORCE_REFRESH_FN__?: () => void }).__FORCE_REFRESH_FN__) {
-                    (window as { __FORCE_REFRESH_FN__?: () => void }).__FORCE_REFRESH_FN__?.();
-                  }
-                }, 500);
               } finally {
                 setIsStatusLoading(false);
               }
@@ -332,6 +330,9 @@ export default function AdminDashboard() {
   // Keep track of last processed orders to detect new ones
   const processedOrdersRef = useRef<Set<string>>(new Set());
   const processedWaiterCallsRef = useRef<Set<string>>(new Set());
+
+  // Store previous orders state to compare status changes
+  const previousOrdersRef = useRef<Record<string, Order>>({});
 
   // Function to handle manual refresh
   const handleRefresh = () => {
@@ -464,19 +465,22 @@ export default function AdminDashboard() {
       const now = Date.now();
       const timeSinceLastUpdate = now - lastUpdateTime;
       updateDebug(`Update (${timeSinceLastUpdate}ms ago)<br>Orders: ${latestOrders.length}`);
-      lastUpdateTime = now;
       
-      // Add a timestamp to each order to force re-rendering
-      const ordersWithTimestamp = latestOrders.map(order => ({
-        ...order,
-        _timestamp: now  // Add a timestamp that changes on each update
-      }));
+      // Create a new pendingNotifications array for each update
+      const pendingNotifications: OrderNotification[] = [];
       
-      // Check for new orders
+      // Check for order updates and new orders
       if (!initialLoad) {
+        // Track status changes for notifications
+        const statusChanges: {orderId: string, oldStatus: string, newStatus: string, order: Order}[] = [];
+        
+        // First pass: check for status changes and collect them
         latestOrders.forEach(order => {
-          if (!processedOrdersRef.current.has(order.id)) {
-            // This is a new order - show a toast notification
+          const isNewOrder = !processedOrdersRef.current.has(order.id);
+          const prevOrder = previousOrdersRef.current[order.id];
+          
+          if (isNewOrder) {
+            // This is a new order - add to notifications if pending
             if (order.status === 'pending' && order.payment_status === 'unpaid') {
               try {
                 const formattedTotal = new Intl.NumberFormat("en-US", {
@@ -509,16 +513,75 @@ export default function AdminDashboard() {
             
             // Mark as processed
             processedOrdersRef.current.add(order.id);
+          } 
+          // Detect status changes (both from UI and external)
+          else if (prevOrder && prevOrder.status !== order.status) {
+            // Status has changed!
+            statusChanges.push({
+              orderId: order.id,
+              oldStatus: prevOrder.status,
+              newStatus: order.status,
+              order: order
+            });
           }
+          
+          // Always update the previous orders ref
+          previousOrdersRef.current[order.id] = { ...order };
+        });
+        
+        // Second pass: show notifications for status changes
+        statusChanges.forEach(change => {
+          const order = change.order;
+          const orderRow = document.getElementById(`order-${order.id}`);
+          
+          const icon = 
+            order.status === 'preparing' ? <CookingPot className="h-5 w-5" /> :
+            order.status === 'completed' ? <CheckIcon className="h-5 w-5" /> :
+            order.status === 'cancelled' ? <XIcon className="h-5 w-5" /> :
+            <ListOrderedIcon className="h-5 w-5" />;
+            
+          const toastType = 
+            order.status === 'preparing' ? toast.info :
+            order.status === 'completed' ? toast.success :
+            order.status === 'cancelled' ? toast.error :
+            toast;
+            
+          toastType(`Order Status Changed: Table ${order.table_id}`, {
+            description: `Status updated from ${change.oldStatus} to ${change.newStatus}`,
+            duration: 5000,
+            icon: icon,
+            action: {
+              label: "View",
+              onClick: () => {
+                if (orderRow) {
+                  orderRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  orderRow.classList.add('animate-highlight');
+                  setTimeout(() => {
+                    orderRow.classList.remove('animate-highlight');
+                  }, 2000);
+                }
+              }
+            }
+          });
         });
       } else {
-        // Mark all existing orders as processed on first load
+        // Initial load - mark all as processed
         latestOrders.forEach(order => {
           processedOrdersRef.current.add(order.id);
+          previousOrdersRef.current[order.id] = { ...order };
         });
         initialLoad = false;
         updateDebug(`Initial load complete<br>Orders: ${latestOrders.length}`);
       }
+      
+      // Update the last update time after processing
+      lastUpdateTime = now;
+      
+      // Add a timestamp to each order to force re-rendering
+      const ordersWithTimestamp = latestOrders.map(order => ({
+        ...order,
+        _timestamp: now  // Add a timestamp that changes on each update
+      }));
       
       // Force a setState even if the array looks the same
       setOrders([...ordersWithTimestamp]);
