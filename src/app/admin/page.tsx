@@ -466,21 +466,57 @@ export default function AdminDashboard() {
       const timeSinceLastUpdate = now - lastUpdateTime;
       updateDebug(`Update (${timeSinceLastUpdate}ms ago)<br>Orders: ${latestOrders.length}`);
       
-      // Create a new pendingNotifications array for each update
-      const pendingNotifications: OrderNotification[] = [];
+      // Add a timestamp to each order to force re-rendering
+      const ordersWithTimestamp = latestOrders.map(order => ({
+        ...order,
+        _timestamp: now  // Add a timestamp that changes on each update
+      }));
       
-      // Check for order updates and new orders
+      // Track all status changes, regardless of source
       if (!initialLoad) {
-        // Track status changes for notifications
-        const statusChanges: {orderId: string, oldStatus: string, newStatus: string, order: Order}[] = [];
-        
-        // First pass: check for status changes and collect them
+        // Compare current orders with previous state to detect status changes
         latestOrders.forEach(order => {
-          const isNewOrder = !processedOrdersRef.current.has(order.id);
           const prevOrder = previousOrdersRef.current[order.id];
           
+          // If order exists and status has changed, show notification
+          if (prevOrder && prevOrder.status !== order.status) {
+            // Show status change notification
+            const icon = 
+              order.status === 'preparing' ? <CookingPot className="h-5 w-5" /> :
+              order.status === 'completed' ? <CheckIcon className="h-5 w-5" /> :
+              order.status === 'cancelled' ? <XIcon className="h-5 w-5" /> :
+              <ListOrderedIcon className="h-5 w-5" />;
+              
+            const toastType = 
+              order.status === 'preparing' ? toast.info :
+              order.status === 'completed' ? toast.success :
+              order.status === 'cancelled' ? toast.error :
+              toast;
+              
+            toastType(`Order Status Changed: Table ${order.table_id}`, {
+              description: `Status updated from ${prevOrder.status} to ${order.status}`,
+              duration: 5000,
+              icon: icon,
+              action: {
+                label: "View",
+                onClick: () => {
+                  const orderRow = document.getElementById(`order-${order.id}`);
+                  if (orderRow) {
+                    orderRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    orderRow.classList.add('animate-highlight');
+                    setTimeout(() => {
+                      orderRow.classList.remove('animate-highlight');
+                    }, 2000);
+                  }
+                }
+              }
+            });
+          }
+          
+          // Check for new orders (existing logic)
+          const isNewOrder = !processedOrdersRef.current.has(order.id);
           if (isNewOrder) {
-            // This is a new order - add to notifications if pending
+            // This is a new order - show a toast notification
             if (order.status === 'pending' && order.payment_status === 'unpaid') {
               try {
                 const formattedTotal = new Intl.NumberFormat("en-US", {
@@ -513,59 +549,13 @@ export default function AdminDashboard() {
             
             // Mark as processed
             processedOrdersRef.current.add(order.id);
-          } 
-          // Detect status changes (both from UI and external)
-          else if (prevOrder && prevOrder.status !== order.status) {
-            // Status has changed!
-            statusChanges.push({
-              orderId: order.id,
-              oldStatus: prevOrder.status,
-              newStatus: order.status,
-              order: order
-            });
           }
           
-          // Always update the previous orders ref
+          // Always update the previous orders ref with current order
           previousOrdersRef.current[order.id] = { ...order };
         });
-        
-        // Second pass: show notifications for status changes
-        statusChanges.forEach(change => {
-          const order = change.order;
-          const orderRow = document.getElementById(`order-${order.id}`);
-          
-          const icon = 
-            order.status === 'preparing' ? <CookingPot className="h-5 w-5" /> :
-            order.status === 'completed' ? <CheckIcon className="h-5 w-5" /> :
-            order.status === 'cancelled' ? <XIcon className="h-5 w-5" /> :
-            <ListOrderedIcon className="h-5 w-5" />;
-            
-          const toastType = 
-            order.status === 'preparing' ? toast.info :
-            order.status === 'completed' ? toast.success :
-            order.status === 'cancelled' ? toast.error :
-            toast;
-            
-          toastType(`Order Status Changed: Table ${order.table_id}`, {
-            description: `Status updated from ${change.oldStatus} to ${change.newStatus}`,
-            duration: 5000,
-            icon: icon,
-            action: {
-              label: "View",
-              onClick: () => {
-                if (orderRow) {
-                  orderRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  orderRow.classList.add('animate-highlight');
-                  setTimeout(() => {
-                    orderRow.classList.remove('animate-highlight');
-                  }, 2000);
-                }
-              }
-            }
-          });
-        });
       } else {
-        // Initial load - mark all as processed
+        // Mark all existing orders as processed on first load
         latestOrders.forEach(order => {
           processedOrdersRef.current.add(order.id);
           previousOrdersRef.current[order.id] = { ...order };
@@ -576,12 +566,6 @@ export default function AdminDashboard() {
       
       // Update the last update time after processing
       lastUpdateTime = now;
-      
-      // Add a timestamp to each order to force re-rendering
-      const ordersWithTimestamp = latestOrders.map(order => ({
-        ...order,
-        _timestamp: now  // Add a timestamp that changes on each update
-      }));
       
       // Force a setState even if the array looks the same
       setOrders([...ordersWithTimestamp]);
