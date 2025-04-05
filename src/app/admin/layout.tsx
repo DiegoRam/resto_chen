@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ClipboardList, Home, Menu, Settings, User, QrCode } from "lucide-react"
+import { ClipboardList, Home, Menu, Settings, User, QrCode, BarChart2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
@@ -49,6 +49,13 @@ export default function AdminLayout({
                     Orders
                   </Link>
                   <Link
+                    href="/admin/analytics"
+                    className="flex items-center gap-2 text-lg p-2 hover:bg-accent rounded-md"
+                  >
+                    <BarChart2 className="h-5 w-5" />
+                    Analytics
+                  </Link>
+                  <Link
                     href="/admin/qr-codes"
                     className="flex items-center gap-2 text-lg p-2 hover:bg-accent rounded-md"
                   >
@@ -89,6 +96,13 @@ export default function AdminLayout({
             >
               <ClipboardList className="h-4 w-4" />
               Orders
+            </Link>
+            <Link
+              href="/admin/analytics"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground flex items-center gap-1"
+            >
+              <BarChart2 className="h-4 w-4" />
+              Analytics
             </Link>
             <Link
               href="/admin/qr-codes"
