@@ -3,26 +3,19 @@
 import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { 
-  ArrowDownIcon, 
-  ArrowUpIcon, 
-  BanknoteIcon, 
-  ChevronUpIcon, 
   CookingPot, 
   DollarSignIcon, 
   ListOrderedIcon, 
   RefreshCwIcon, 
-  ShoppingBagIcon, 
   TableIcon, 
   UserIcon,
   CheckIcon,
   XIcon
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
-  getOrders, 
   Order, 
   OrderItem,
   subscribeToOrders,
@@ -127,13 +120,13 @@ const orderColumns: ColumnDef<Order>[] = [
   {
     id: "actions",
     header: "Actions",
-    cell: ({ row }) => {
-      const order = row.original
-      const [isStatusLoading, setIsStatusLoading] = useState(false)
-      const [isPaymentLoading, setIsPaymentLoading] = useState(false)
+    cell: function OrderActionsCell({ row }) {
+      const order = row.original;
+      const [isStatusLoading, setIsStatusLoading] = useState(false);
+      const [isPaymentLoading, setIsPaymentLoading] = useState(false);
       
       // Force re-render of buttons when order changes
-      const buttonKey = `button-${order.id}-${order._timestamp || ''}`
+      const buttonKey = `button-${order.id}-${order._timestamp || ''}`;
       
       return (
         <div className="flex space-x-2">
@@ -144,33 +137,33 @@ const orderColumns: ColumnDef<Order>[] = [
             disabled={isStatusLoading}
             onClick={async () => {
               try {
-                setIsStatusLoading(true)
+                setIsStatusLoading(true);
                 const newStatus = order.status === "pending" ? "preparing" :
                                 order.status === "preparing" ? "completed" :
-                                order.status === "completed" ? "pending" : "pending"
+                                order.status === "completed" ? "pending" : "pending";
                 
                 // Clone the current orders array
-                const currentOrders = [...(window as any).__CURRENT_ORDERS__ || []];
+                const currentOrders = [...(window as { __CURRENT_ORDERS__?: Order[] }).__CURRENT_ORDERS__ || []];
                 
                 // Find and update the order locally to provide immediate UI feedback
                 const updatedOrders = currentOrders.map(o => 
-                  o.id === order.id ? { ...o, status: newStatus, _timestamp: Date.now() } : o
-                );
+                  o.id === order.id ? { ...o, status: newStatus as Order['status'], _timestamp: Date.now() } : o
+                ) as Order[];
                 
                 // Update state through the parent component
-                (window as any).__UPDATE_ORDERS_FN__(updatedOrders);
+                ((window as { __UPDATE_ORDERS_FN__?: (orders: Order[]) => void }).__UPDATE_ORDERS_FN__)?.(updatedOrders);
                 
                 // Then send the update to the server
-                await updateOrderStatus(order.id, newStatus);
+                await updateOrderStatus(order.id, newStatus as Order['status']);
                 
                 // After server update, trigger a refresh in case real-time updates aren't working
                 setTimeout(() => {
-                  if (window && (window as any).__FORCE_REFRESH_FN__) {
-                    (window as any).__FORCE_REFRESH_FN__();
+                  if (window && (window as { __FORCE_REFRESH_FN__?: () => void }).__FORCE_REFRESH_FN__) {
+                    (window as { __FORCE_REFRESH_FN__?: () => void }).__FORCE_REFRESH_FN__?.();
                   }
                 }, 500);
               } finally {
-                setIsStatusLoading(false)
+                setIsStatusLoading(false);
               }
             }}
           >
@@ -191,33 +184,33 @@ const orderColumns: ColumnDef<Order>[] = [
             disabled={isPaymentLoading}
             onClick={async () => {
               try {
-                setIsPaymentLoading(true)
+                setIsPaymentLoading(true);
                 const newPaymentStatus = order.payment_status === "unpaid" ? "paid" :
                                         order.payment_status === "paid" ? "refunded" :
-                                        "unpaid"
+                                        "unpaid";
                 
                 // Clone the current orders array
-                const currentOrders = [...(window as any).__CURRENT_ORDERS__ || []];
+                const currentOrders = [...(window as { __CURRENT_ORDERS__?: Order[] }).__CURRENT_ORDERS__ || []];
                 
                 // Find and update the order locally to provide immediate UI feedback
                 const updatedOrders = currentOrders.map(o => 
-                  o.id === order.id ? { ...o, payment_status: newPaymentStatus, _timestamp: Date.now() } : o
-                );
+                  o.id === order.id ? { ...o, payment_status: newPaymentStatus as Order['payment_status'], _timestamp: Date.now() } : o
+                ) as Order[];
                 
                 // Update state through the parent component
-                (window as any).__UPDATE_ORDERS_FN__(updatedOrders);
+                ((window as { __UPDATE_ORDERS_FN__?: (orders: Order[]) => void }).__UPDATE_ORDERS_FN__)?.(updatedOrders);
                 
                 // Then send the update to the server
-                await updatePaymentStatus(order.id, newPaymentStatus);
+                await updatePaymentStatus(order.id, newPaymentStatus as Order['payment_status']);
                 
                 // After server update, trigger a refresh in case real-time updates aren't working
                 setTimeout(() => {
-                  if (window && (window as any).__FORCE_REFRESH_FN__) {
-                    (window as any).__FORCE_REFRESH_FN__();
+                  if (window && (window as { __FORCE_REFRESH_FN__?: () => void }).__FORCE_REFRESH_FN__) {
+                    (window as { __FORCE_REFRESH_FN__?: () => void }).__FORCE_REFRESH_FN__?.();
                   }
                 }, 500);
               } finally {
-                setIsPaymentLoading(false)
+                setIsPaymentLoading(false);
               }
             }}
           >
@@ -232,7 +225,7 @@ const orderColumns: ColumnDef<Order>[] = [
             )}
           </Button>
         </div>
-      )
+      );
     }
   }
 ]

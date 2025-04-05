@@ -68,8 +68,9 @@ export default function MenuPage() {
     setSelectedItems(prev => {
       if (quantity === 0) {
         // Remove the item if quantity is 0
-        const { [productId]: _, ...rest } = prev
-        return rest
+        const newItems = { ...prev };
+        delete newItems[productId];
+        return newItems;
       }
       return { ...prev, [productId]: quantity }
     })
@@ -82,22 +83,6 @@ export default function MenuPage() {
       [productId]: true
     }))
   }
-
-  // Calculate total items and price
-  const orderSummary = useMemo(() => {
-    let totalItems = 0
-    let totalPrice = 0
-
-    Object.entries(selectedItems).forEach(([productId, quantity]) => {
-      const product = products.find(p => p.id === productId)
-      if (product) {
-        totalItems += quantity
-        totalPrice += product.price * quantity
-      }
-    })
-
-    return { totalItems, totalPrice }
-  }, [selectedItems, products])
 
   // Place order
   const handlePlaceOrder = async () => {

@@ -41,7 +41,10 @@ export default function OrdersPage() {
     {
       accessorKey: "id",
       header: "Order ID",
-      cell: ({ row }) => <div className="font-medium text-xs md:text-sm">{row.getValue("id").substring(0, 8)}...</div>,
+      cell: ({ row }) => {
+        const id = String(row.getValue("id"));
+        return <div className="font-medium text-xs md:text-sm">{id.substring(0, 8)}...</div>;
+      },
     },
     {
       accessorKey: "table_id",

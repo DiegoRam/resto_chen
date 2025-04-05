@@ -33,6 +33,12 @@ interface DataTableProps<TData, TValue> {
   searchPlaceholder?: string
 }
 
+// Add this interface to handle row data with ID
+interface RowWithId {
+  id?: string;
+  [key: string]: any;
+}
+
 export function DataTable<TData, TValue>({
   columns,
   data,
@@ -118,7 +124,7 @@ export function DataTable<TData, TValue>({
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => {
                 // Get the original row data, which might contain an 'id' field
-                const rowData = row.original as any;
+                const rowData = row.original as RowWithId;
                 const rowId = rowData?.id ? `order-${rowData.id}` : row.id;
                 
                 return (

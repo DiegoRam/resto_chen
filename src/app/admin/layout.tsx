@@ -1,10 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { ClipboardList, Home, Menu, Settings, User, X } from "lucide-react"
+import { ClipboardList, Home, Menu, Settings, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { useState } from "react"
 
 export default function AdminLayout({
   children,

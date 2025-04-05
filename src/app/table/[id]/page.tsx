@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +14,6 @@ export default function TablePage() {
   const params = useParams()
   const id = params.id as string
   
-  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
 
   const handleCallWaiter = async () => {

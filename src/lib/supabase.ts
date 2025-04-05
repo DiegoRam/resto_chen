@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, RealtimeChannel } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -209,7 +209,7 @@ export function subscribeToOrders(callback: (orders: Order[]) => void, filters?:
   const intervalId = pollingInterval;
   
   // Try to set up real-time subscriptions as an enhancement
-  let subscription: any = null;
+  let subscription: RealtimeChannel | null = null;
   try {
     // Create a channel name
     const channelName = `orders-channel-${Math.random().toString(36).substring(2, 11)}`;
