@@ -39,7 +39,9 @@ export default function TablePage() {
         setIsVerified(true)
         
         // Save verification in sessionStorage to persist during the session
-        sessionStorage.setItem(`table_${id}_verified`, "true")
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          sessionStorage.setItem(`table_${id}_verified`, "true")
+        }
       } catch (error) {
         console.error("Error verifying table:", error)
         toast({
@@ -53,7 +55,10 @@ export default function TablePage() {
     }
     
     // Check if already verified in this session
-    const isAlreadyVerified = sessionStorage.getItem(`table_${id}_verified`) === "true"
+    const isAlreadyVerified = typeof window !== 'undefined' && 
+      window.sessionStorage && 
+      sessionStorage.getItem(`table_${id}_verified`) === "true"
+      
     if (isAlreadyVerified) {
       setIsVerified(true)
       setIsVerifying(false)

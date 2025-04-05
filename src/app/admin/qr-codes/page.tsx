@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { QRCodeGenerator } from "@/components/ui/qr-code"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,7 +9,14 @@ import { Printer, Download } from "lucide-react"
 
 export default function QRCodesPage() {
   const [tables, setTables] = useState<number[]>([])
-  const [baseUrl, setBaseUrl] = useState(process.env.NEXT_PUBLIC_APP_URL || "")
+  const [baseUrl, setBaseUrl] = useState("")
+  const [isMounted, setIsMounted] = useState(false)
+
+  // Set initial state after component mounts (client-side only)
+  useEffect(() => {
+    setIsMounted(true)
+    setBaseUrl(process.env.NEXT_PUBLIC_APP_URL || window.location.origin)
+  }, [])
 
   // Generate tables in a range
   const generateTableRange = (start: number, end: number) => {
@@ -20,9 +27,30 @@ export default function QRCodesPage() {
     setTables(range)
   }
 
-  // Print all QR codes
+  // Print all QR codes - only available on client
   const printQRCodes = () => {
-    window.print()
+    if (typeof window !== "undefined") {
+      window.print()
+    }
+  }
+
+  // Don't render anything on server
+  if (!isMounted) {
+    return (
+      <div className="container py-6 space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">QR Code Management</h1>
+            <p className="text-muted-foreground">
+              Loading QR code generator...
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -49,7 +77,7 @@ export default function QRCodesPage() {
         </TabsList>
         
         <TabsContent value="generate" className="mt-4">
-          <QRCodeGenerator />
+          <QRCodeGenerator baseUrl={baseUrl} />
         </TabsContent>
         
         <TabsContent value="bulk" className="mt-4">
@@ -108,7 +136,7 @@ export default function QRCodesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 print:grid-cols-2 print:gap-0">
           {tables.map(tableId => (
             <div key={tableId} className="print:p-4 print:page-break-inside-avoid">
-              <QRCodeGenerator defaultTableId={tableId.toString()} />
+              <QRCodeGenerator defaultTableId={tableId.toString()} baseUrl={baseUrl} />
             </div>
           ))}
         </div>

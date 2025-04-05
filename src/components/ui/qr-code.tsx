@@ -1,25 +1,38 @@
 "use client"
 
-import { useState, useRef } from 'react'
-import QRCode from 'react-qr-code'
+import { useState, useRef, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { Button } from './button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './card'
 import { Input } from './input'
 import { Download, Copy, RefreshCw } from 'lucide-react'
 
+// Dynamically import QRCode to avoid SSR issues
+const QRCode = dynamic(() => import('react-qr-code'), { ssr: false })
+
 interface QRCodeGeneratorProps {
   baseUrl?: string
   defaultTableId?: string
 }
 
-export function QRCodeGenerator({ baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin, defaultTableId = "" }: QRCodeGeneratorProps) {
+export function QRCodeGenerator({ baseUrl = "", defaultTableId = "" }: QRCodeGeneratorProps) {
   const [tableId, setTableId] = useState(defaultTableId)
   const [size, setSize] = useState<"sm" | "md" | "lg">("md")
+  const [isMounted, setIsMounted] = useState(false)
+  const [currentUrl, setCurrentUrl] = useState("")
   const qrRef = useRef<HTMLDivElement>(null)
 
+  // Initialize component on client side only
+  useEffect(() => {
+    setIsMounted(true)
+    // Use the provided baseUrl or fallback to window.location.origin
+    const url = baseUrl || process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+    setCurrentUrl(url)
+  }, [baseUrl])
+
   // Generate the complete URL for the table
-  const tableUrl = `${baseUrl}/table/${tableId}`
+  const tableUrl = `${currentUrl}/table/${tableId}`
 
   // Handle size changes
   const sizeValues = {
@@ -34,21 +47,23 @@ export function QRCodeGenerator({ baseUrl = process.env.NEXT_PUBLIC_APP_URL || w
     setTableId(randomId.toString())
   }
 
-  // Copy URL to clipboard
+  // Copy URL to clipboard - client-side only
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(tableUrl)
-      .then(() => {
-        // Show success message
-        alert("URL copied to clipboard!")
-      })
-      .catch(err => {
-        console.error('Failed to copy URL: ', err)
-      })
+    if (typeof navigator !== "undefined") {
+      navigator.clipboard.writeText(tableUrl)
+        .then(() => {
+          // Show success message
+          alert("URL copied to clipboard!")
+        })
+        .catch(err => {
+          console.error('Failed to copy URL: ', err)
+        })
+    }
   }
 
-  // Download QR code as PNG
+  // Download QR code as PNG - client-side only
   const downloadQRCode = () => {
-    if (!qrRef.current) return
+    if (!qrRef.current || typeof window === "undefined") return
     
     try {
       const canvas = qrRef.current.querySelector("canvas")
@@ -88,6 +103,21 @@ export function QRCodeGenerator({ baseUrl = process.env.NEXT_PUBLIC_APP_URL || w
     } catch (error) {
       console.error("Error downloading QR code", error)
     }
+  }
+  
+  // Show loading state during SSR or hydration
+  if (!isMounted) {
+    return (
+      <Card className="w-full max-w-md mx-auto">
+        <CardHeader>
+          <CardTitle>Table QR Code Generator</CardTitle>
+          <CardDescription>Loading QR code generator...</CardDescription>
+        </CardHeader>
+        <CardContent className="flex justify-center py-6">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
