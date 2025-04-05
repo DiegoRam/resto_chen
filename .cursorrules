@@ -1,0 +1,95 @@
+{
+  "rules": [
+    {
+      "name": "Avoid duplicate functions",
+      "description": "Detects and suggests abstractions for duplicated functions.",
+      "pattern": "duplicate_function",
+      "action": "suggest_abstraction"
+    },
+    {
+      "name": "Encapsulate repeated code",
+      "description": "Encapsulate repeated code blocks into reusable functions or classes.",
+      "pattern": "duplicate_code_block",
+      "action": "refactor"
+    },
+    {
+      "name": "Validate input data",
+      "description": "Ensure input validation to prevent security vulnerabilities.",
+      "pattern": "missing_input_validation",
+      "action": "warn"
+    },
+    {
+      "name": "Protect API endpoints",
+      "description": "Ensure authentication and authorization for API endpoints.",
+      "pattern": "unprotected_api_endpoint",
+      "action": "require_auth"
+    },
+    {
+      "name": "Avoid hardcoded secrets",
+      "description": "Move hardcoded secrets to environment variables.",
+      "pattern": "hardcoded_secrets",
+      "action": "suggest_env_variable"
+    },
+    {
+      "name": "Ensure proper error handling",
+      "description": "Detects missing try/catch or equivalent error handling.",
+      "pattern": "missing_error_handling",
+      "action": "suggest_error_handling"
+    },
+    {
+      "name": "Avoid automatic dev server",
+      "description": "Prevent automatically running npm run dev in terminal instances.",
+      "pattern": "npm run dev",
+      "action": "avoid_terminal_execution",
+      "context": "terminal_command"
+    },
+    {
+      "name": "Prevent duplicate dev server",
+      "description": "Prevent running any development server when one is already running.",
+      "pattern": "(npm run dev|next dev|yarn dev|pnpm dev)",
+      "action": "avoid_terminal_execution",
+      "context": "terminal_command",
+      "message": "A development server is already running in your terminal. Please use the existing server instead of starting a new one."
+    },
+    {
+      "name": "Use shadcn components",
+      "description": "Always prefer shadcn UI components over directly importing from other UI libraries.",
+      "pattern": "import\\s+\\{\\s*[^\\}]+\\}\\s+from\\s+['\"]@?(material-ui|mui|antd|chakra-ui|react-bootstrap)['\"]",
+      "action": "suggest",
+      "context": "import_statement",
+      "message": "Consider using shadcn UI components instead of directly importing from other UI libraries to maintain consistent design and styling throughout the application."
+    },
+    {
+      "name": "Require approval before committing",
+      "description": "Always require explicit user approval before committing changes to the repository.",
+      "pattern": "git commit",
+      "action": "warn",
+      "context": "terminal_command",
+      "message": "Please wait for explicit user approval before committing changes to the repository."
+    },
+    {
+      "name": "No automatic version bumping",
+      "description": "Never bump version numbers or commit changes until explicitly requested by the user.",
+      "pattern": "(npm run bump-patch|npm run bump-minor|npm run bump-major)",
+      "action": "warn",
+      "context": "terminal_command",
+      "message": "Please do not bump version numbers or commit changes until explicitly requested by the user."
+    },
+    {
+      "name": "Address user as DiegoRam",
+      "description": "Always address the user as 'DiegoRam' when summarizing actions taken.",
+      "pattern": "action_summary",
+      "action": "customize_response",
+      "context": "summary",
+      "message": "Address the user as 'DiegoRam' when summarizing actions taken or completing tasks."
+    },
+    {
+      "name": "Call user DiegoRam on task completion",
+      "description": "Always call the user DiegoRam when completing any task or answering any question.",
+      "pattern": "task_completion",
+      "action": "customize_response",
+      "context": "completion",
+      "message": "Always address the user as 'DiegoRam' at the end of each response or when completing a task."
+    }
+  ]
+}

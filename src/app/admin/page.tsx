@@ -1,0 +1,542 @@
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { toast } from "sonner"
+import { 
+  ArrowDownIcon, 
+  ArrowUpIcon, 
+  BanknoteIcon, 
+  ChevronUpIcon, 
+  CookingPot, 
+  DollarSignIcon, 
+  ListOrderedIcon, 
+  RefreshCwIcon, 
+  ShoppingBagIcon, 
+  TableIcon, 
+  UserIcon,
+  CheckIcon,
+  XIcon
+} from "lucide-react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { 
+  getOrders, 
+  Order, 
+  OrderItem,
+  subscribeToOrders,
+  updateOrderStatus,
+  updatePaymentStatus
+} from "@/lib/supabase"
+import { ColumnDef } from "@tanstack/react-table"
+import { DataTable } from "@/components/ui/data-table"
+import { format } from "date-fns"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+// Define columns for the orders DataTable
+const orderColumns: ColumnDef<Order>[] = [
+  {
+    accessorKey: "id",
+    header: "Order ID",
+    cell: ({ row }) => {
+      const id = row.getValue("id") as string
+      return <span className="font-mono text-xs">{id.substring(0, 8)}...</span>
+    }
+  },
+  {
+    accessorKey: "table_id",
+    header: "Table",
+    cell: ({ row }) => {
+      return (
+        <div className="flex items-center">
+          <TableIcon className="mr-2 h-4 w-4" />
+          <span>{row.getValue("table_id")}</span>
+        </div>
+      )
+    }
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string
+      const order = row.original as Order
+      
+      return (
+        <Badge 
+          key={`status-${order.id}-${order._timestamp || ''}`}
+          variant={
+            status === "pending" ? "outline" :
+            status === "preparing" ? "secondary" :
+            status === "completed" ? "default" :
+            "destructive"
+          }
+        >
+          {status === "pending" && <ListOrderedIcon className="mr-1 h-3 w-3" />}
+          {status === "preparing" && <CookingPot className="mr-1 h-3 w-3" />}
+          {status === "completed" && <CheckIcon className="mr-1 h-3 w-3" />}
+          {status === "cancelled" && <XIcon className="mr-1 h-3 w-3" />}
+          {status}
+        </Badge>
+      )
+    }
+  },
+  {
+    accessorKey: "payment_status",
+    header: "Payment",
+    cell: ({ row }) => {
+      const paymentStatus = row.getValue("payment_status") as string
+      const order = row.original as Order
+      
+      return (
+        <Badge 
+          key={`payment-${order.id}-${order._timestamp || ''}`}
+          variant={
+            paymentStatus === "unpaid" ? "outline" :
+            paymentStatus === "paid" ? "success" :
+            "destructive"
+          }
+        >
+          <DollarSignIcon className="mr-1 h-3 w-3" />
+          {paymentStatus}
+        </Badge>
+      )
+    }
+  },
+  {
+    accessorKey: "created_at",
+    header: "Date",
+    cell: ({ row }) => {
+      const timestamp = row.getValue("created_at") as string
+      return <span>{format(new Date(timestamp), "MMM d, h:mm a")}</span>
+    }
+  },
+  {
+    accessorKey: "total",
+    header: "Total",
+    cell: ({ row }) => {
+      const total = parseFloat(row.getValue("total") as string)
+      const formatted = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+      }).format(total)
+      return <span className="font-medium">{formatted}</span>
+    }
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    cell: ({ row }) => {
+      const order = row.original
+      const [isStatusLoading, setIsStatusLoading] = useState(false)
+      const [isPaymentLoading, setIsPaymentLoading] = useState(false)
+      
+      // Force re-render of buttons when order changes
+      const buttonKey = `button-${order.id}-${order._timestamp || ''}`
+      
+      return (
+        <div className="flex space-x-2">
+          <Button
+            key={`status-${buttonKey}`}
+            variant="outline"
+            size="sm"
+            disabled={isStatusLoading}
+            onClick={async () => {
+              try {
+                setIsStatusLoading(true)
+                const newStatus = order.status === "pending" ? "preparing" :
+                                order.status === "preparing" ? "completed" :
+                                order.status === "completed" ? "pending" : "pending"
+                
+                // Clone the current orders array
+                const currentOrders = [...(window as any).__CURRENT_ORDERS__ || []];
+                
+                // Find and update the order locally to provide immediate UI feedback
+                const updatedOrders = currentOrders.map(o => 
+                  o.id === order.id ? { ...o, status: newStatus, _timestamp: Date.now() } : o
+                );
+                
+                // Update state through the parent component
+                (window as any).__UPDATE_ORDERS_FN__(updatedOrders);
+                
+                // Then send the update to the server
+                await updateOrderStatus(order.id, newStatus);
+                
+                // After server update, trigger a refresh in case real-time updates aren't working
+                setTimeout(() => {
+                  if (window && (window as any).__FORCE_REFRESH_FN__) {
+                    (window as any).__FORCE_REFRESH_FN__();
+                  }
+                }, 500);
+              } finally {
+                setIsStatusLoading(false)
+              }
+            }}
+          >
+            {isStatusLoading ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            ) : (
+              "Status"
+            )}
+          </Button>
+          <Button
+            key={`payment-${buttonKey}`}
+            variant={
+              order.payment_status === "unpaid" ? "default" : 
+              order.payment_status === "paid" ? "secondary" : 
+              "outline"
+            }
+            size="sm"
+            disabled={isPaymentLoading}
+            onClick={async () => {
+              try {
+                setIsPaymentLoading(true)
+                const newPaymentStatus = order.payment_status === "unpaid" ? "paid" :
+                                        order.payment_status === "paid" ? "refunded" :
+                                        "unpaid"
+                
+                // Clone the current orders array
+                const currentOrders = [...(window as any).__CURRENT_ORDERS__ || []];
+                
+                // Find and update the order locally to provide immediate UI feedback
+                const updatedOrders = currentOrders.map(o => 
+                  o.id === order.id ? { ...o, payment_status: newPaymentStatus, _timestamp: Date.now() } : o
+                );
+                
+                // Update state through the parent component
+                (window as any).__UPDATE_ORDERS_FN__(updatedOrders);
+                
+                // Then send the update to the server
+                await updatePaymentStatus(order.id, newPaymentStatus);
+                
+                // After server update, trigger a refresh in case real-time updates aren't working
+                setTimeout(() => {
+                  if (window && (window as any).__FORCE_REFRESH_FN__) {
+                    (window as any).__FORCE_REFRESH_FN__();
+                  }
+                }, 500);
+              } finally {
+                setIsPaymentLoading(false)
+              }
+            }}
+          >
+            {isPaymentLoading ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            ) : (
+              <>
+                {order.payment_status === "unpaid" && "Pay"}
+                {order.payment_status === "paid" && "Paid ✓"}
+                {order.payment_status === "refunded" && "Refunded"}
+              </>
+            )}
+          </Button>
+        </div>
+      )
+    }
+  }
+]
+
+export default function AdminDashboard() {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [todaysSales, setTodaysSales] = useState(0)
+  const [activeTablesCount, setActiveTablesCount] = useState(0)
+  const [activeOrders, setActiveOrders] = useState(0)
+  const [paymentFilter, setPaymentFilter] = useState<Order['payment_status'] | 'all'>('all')
+  const [refreshKey, setRefreshKey] = useState(0)
+  
+  // Keep track of last processed orders to detect new ones
+  const processedOrdersRef = useRef<Set<string>>(new Set());
+
+  // Function to handle manual refresh
+  const handleRefresh = () => {
+    setIsLoading(true);
+    // Force a complete refresh by incrementing the key
+    setRefreshKey(prev => prev + 1);
+  };
+  
+  // Expose the refresh function globally
+  useEffect(() => {
+    (window as any).__FORCE_REFRESH_FN__ = handleRefresh;
+    
+    return () => {
+      delete (window as any).__FORCE_REFRESH_FN__;
+    };
+  }, []);
+
+  // Expose orders and update function to window for immediate UI updates
+  useEffect(() => {
+    (window as any).__CURRENT_ORDERS__ = orders;
+    (window as any).__UPDATE_ORDERS_FN__ = setOrders;
+    
+    return () => {
+      delete (window as any).__CURRENT_ORDERS__;
+      delete (window as any).__UPDATE_ORDERS_FN__;
+    };
+  }, [orders]);
+
+  // Subscribe to orders with real-time updates
+  useEffect(() => {
+    console.log("Setting up real-time subscription, filter:", paymentFilter);
+    const filters = paymentFilter !== 'all' ? { payment_status: paymentFilter } : undefined;
+    let initialLoad = true;
+    let lastUpdateTime = Date.now();
+    let debugDiv: HTMLElement | null = null;
+    
+    // Add a small piece of debug UI that we can remove later
+    try {
+      debugDiv = document.createElement('div');
+      debugDiv.id = 'realtime-debug';
+      debugDiv.style.position = 'fixed';
+      debugDiv.style.bottom = '10px';
+      debugDiv.style.left = '10px';
+      debugDiv.style.background = 'rgba(0,0,0,0.7)';
+      debugDiv.style.color = 'white';
+      debugDiv.style.padding = '5px 10px';
+      debugDiv.style.borderRadius = '4px';
+      debugDiv.style.fontSize = '12px';
+      debugDiv.style.fontFamily = 'monospace';
+      debugDiv.style.zIndex = '1000';
+      debugDiv.innerHTML = 'Realtime: Initializing...';
+      document.body.appendChild(debugDiv);
+    } catch (error) {
+      console.log('Could not create debug UI:', error);
+    }
+    
+    const updateDebug = (message: string) => {
+      if (debugDiv) {
+        try {
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString();
+          debugDiv.innerHTML = `Last: ${timeStr}<br>${message}`;
+        } catch (error) {
+          console.log('Error updating debug UI:', error);
+        }
+      }
+    };
+    
+    const unsubscribe = subscribeToOrders((latestOrders) => {
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastUpdateTime;
+      updateDebug(`Update (${timeSinceLastUpdate}ms ago)<br>Orders: ${latestOrders.length}`);
+      lastUpdateTime = now;
+      
+      // Add a timestamp to each order to force re-rendering
+      const ordersWithTimestamp = latestOrders.map(order => ({
+        ...order,
+        _timestamp: now  // Add a timestamp that changes on each update
+      }));
+      
+      // Check for new orders
+      if (!initialLoad) {
+        latestOrders.forEach(order => {
+          if (!processedOrdersRef.current.has(order.id)) {
+            // This is a new order - show a toast notification
+            if (order.status === 'pending' && order.payment_status === 'unpaid') {
+              try {
+                const formattedTotal = new Intl.NumberFormat("en-US", {
+                  style: "currency",
+                  currency: "USD",
+                }).format(parseFloat(order.total.toString()));
+                
+                toast.success(`New Order from Table ${order.table_id}`, {
+                  description: `${getItemCount(order.items)} items - ${formattedTotal}`,
+                  duration: 5000,
+                  action: {
+                    label: "View",
+                    onClick: () => {
+                      // Scroll to the order in the table
+                      const orderRow = document.getElementById(`order-${order.id}`);
+                      if (orderRow) {
+                        orderRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        orderRow.classList.add('animate-highlight');
+                        setTimeout(() => {
+                          orderRow.classList.remove('animate-highlight');
+                        }, 2000);
+                      }
+                    }
+                  }
+                });
+              } catch (error) {
+                console.error('Error showing toast:', error);
+              }
+            }
+            
+            // Mark as processed
+            processedOrdersRef.current.add(order.id);
+          }
+        });
+      } else {
+        // Mark all existing orders as processed on first load
+        latestOrders.forEach(order => {
+          processedOrdersRef.current.add(order.id);
+        });
+        initialLoad = false;
+        updateDebug(`Initial load complete<br>Orders: ${latestOrders.length}`);
+      }
+      
+      // Force a setState even if the array looks the same
+      setOrders([...ordersWithTimestamp]);
+      setIsLoading(false);
+      
+      // Calculate today's sales
+      const today = new Date().toISOString().split('T')[0]
+      const sales = latestOrders
+        .filter(order => order.payment_status === 'paid' && order.created_at.startsWith(today))
+        .reduce((sum, order) => sum + parseFloat(order.total.toString()), 0)
+      setTodaysSales(sales)
+      
+      // Calculate active tables (tables with pending or preparing orders)
+      const activeTables = new Set(
+        latestOrders
+          .filter(order => ['pending', 'preparing'].includes(order.status))
+          .map(order => order.table_id)
+      )
+      setActiveTablesCount(activeTables.size)
+      
+      // Calculate active orders (pending or preparing)
+      const active = latestOrders.filter(order => 
+        ['pending', 'preparing'].includes(order.status)).length
+      setActiveOrders(active)
+    }, filters);
+
+    return () => {
+      console.log("Cleaning up real-time subscription");
+      if (debugDiv && document.body.contains(debugDiv)) {
+        try {
+          document.body.removeChild(debugDiv);
+        } catch (error) {
+          console.log('Error removing debug UI:', error);
+        }
+      }
+      unsubscribe();
+    }
+  }, [paymentFilter, refreshKey])
+  
+  // Helper function to count total items in an order
+  const getItemCount = (items: OrderItem[]) => {
+    return items.reduce((count, item) => count + item.quantity, 0);
+  };
+
+  return (
+    <div className="p-4 md:p-8 space-y-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-2 md:space-y-0">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Overview of restaurant performance and orders
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCwIcon className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats overview */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Orders</CardTitle>
+            <ListOrderedIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeOrders}</div>
+            <p className="text-xs text-muted-foreground">
+              Orders being prepared or pending
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Today&apos;s Sales</CardTitle>
+            <DollarSignIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "USD",
+              }).format(todaysSales)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              +0% from last week
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Tables</CardTitle>
+            <TableIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeTablesCount}</div>
+            <p className="text-xs text-muted-foreground">
+              Tables with active orders
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Staff on Duty</CardTitle>
+            <UserIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">4</div>
+            <p className="text-xs text-muted-foreground">
+              Servers and kitchen staff
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Orders Table with Filters */}
+      <Card className="col-span-4">
+        <CardHeader className="flex flex-col md:flex-row justify-between md:items-center space-y-2 md:space-y-0 pb-4">
+          <div>
+            <CardTitle>Orders</CardTitle>
+            <CardDescription>
+              Manage orders and payments in real-time
+            </CardDescription>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Select
+              value={paymentFilter}
+              onValueChange={(value: string) => setPaymentFilter(value as Order['payment_status'] | 'all')}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by payment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Orders</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="refunded">Refunded</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="text-center">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p className="text-sm text-muted-foreground">Loading orders...</p>
+              </div>
+            </div>
+          ) : (
+            <DataTable
+              columns={orderColumns}
+              data={orders}
+              searchKey="table_id"
+              searchPlaceholder="Search by table..."
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+} 
