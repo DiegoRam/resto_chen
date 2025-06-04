@@ -34,7 +34,7 @@ ALTER TABLE orders DROP COLUMN IF EXISTS payment_status;
 ALTER TABLE orders RENAME COLUMN payment_status_tmp TO payment_status;
 
 -- Step 7: Add index for better query performance
-CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
 
 -- Verify the migration
 SELECT 
