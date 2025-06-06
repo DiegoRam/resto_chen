@@ -36,7 +36,7 @@ export default function OrdersPage() {
       setUpdatingOrders(prev => ({ ...prev, [orderId]: true }))
       
       // Show loading toast
-      toast.loading(`Updating order status...`, {
+      toast.loading(`Actualizando estado del pedido...`, {
         id: `order-update-${orderId}`,
         position: "top-center",
         className: "border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-200"
@@ -45,7 +45,7 @@ export default function OrdersPage() {
       await updateOrderStatus(orderId, newStatus)
       
       // Show success toast
-      toast.success(`Order status updated to ${newStatus}`, {
+      toast.success(`Estado del pedido actualizado a ${newStatus}`, {
         id: `order-update-${orderId}`,
         icon: <CheckCircle className="h-5 w-5" />,
         position: "top-center"
@@ -54,10 +54,10 @@ export default function OrdersPage() {
       console.error("Error updating order status:", error)
       
       // Show error toast
-      toast.error(`Failed to update order status`, {
+      toast.error(`Error al actualizar el estado del pedido`, {
         id: `order-update-${orderId}`,
         icon: <AlertCircle className="h-5 w-5" />,
-        description: "Please try again or check your connection.",
+        description: "Por favor, inténtalo de nuevo o revisa tu conexión.",
         position: "top-center"
       })
     } finally {
