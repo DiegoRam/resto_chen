@@ -38,7 +38,8 @@ export default function OrdersPage() {
       // Show loading toast
       toast.loading(`Updating order status...`, {
         id: `order-update-${orderId}`,
-        position: "top-center"
+        position: "top-center",
+        className: "border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-200"
       })
       
       await updateOrderStatus(orderId, newStatus)
